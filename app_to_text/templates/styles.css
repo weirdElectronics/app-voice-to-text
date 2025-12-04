@@ -1,0 +1,44 @@
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  margin: 0;
+  font-family: 'Courier New', Courier, monospace; /* Fuente tipo máquina de escribir */
+  background-color: black; /* Fondo negro */
+  color: white; /* Texto blanco */
+}
+h1 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+button {
+  margin: 10px;
+  padding: 10px 20px;
+  font-size: 16px;
+  font-family: 'Courier New', Courier, monospace;
+  cursor: pointer;
+  background-color: #444; /* Fondo del botón */
+  color: white; /* Color del texto del botón */
+  border: none; /* Sin borde */
+  border-radius: 10px; /* Bordes redondeados */
+}
+button:hover {
+  background-color: #444;
+  font-family: 'Courier New', Courier, monospace; /* Fondo del botón al pasar el ratón */
+}
+
+select {
+  margin-bottom: 20px;
+  padding: 8px 10px;
+  background-color: #444; /* Fondo del select */
+  color: white; /* Color del texto del select */
+  font-size: 16px;
+  font-family: 'Courier New', Courier, monospace;
+  border-radius: 10px;
+}
+#status {
+  margin-top: 20px;
+  font-weight: bold;
+}
