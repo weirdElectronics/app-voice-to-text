@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="es">
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+<head>
+<meta charset="UTF-8" />
+<title>Cuanto gastaste Laura??</title>
+</head>
+<body>
+  <label for="modo">Modo:</label>
+<select id="modo">
+  <option value="texto" selected>Texto</option>
+  <option value="suma">Suma (gastos)</option>
+</select>
+<br><br>
+<h1>Cuanto gastaste Laura??</h1>
+<button id="startBtn">Comenzar a Grabar</button>
+<button id="stopBtn" disabled>Detener y Enviar</button>
+<button id="resetBtn">Resetear documento</button>
+
+<p id="status"></p>
+
+<script>
+let mediaRecorder;
+let audioChunks = [];
+
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const status = document.getElementById('status');
+const resetBtn = document.getElementById('resetBtn');
+
+
+startBtn.onclick = async () => {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.start();
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = event => {
+                if (event.data.size > 0) {
+                    audioChunks.push(event.data);
+                }
+            };
+
+            resetBtn.onclick = () => {
+                fetch('/reset_documento', {
+                    method: 'POST'
+                }).then(res => res.text())
+                  .then(data => {
+                      document.getElementById('status').innerText = data;
+                  }).catch(err => {
+                      document.getElementById('status').innerText = 'Error: ' + err;
+                  });
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                const reader = new FileReader();
+
+                reader.onloadend = () => {
+    const base64data = reader.result;
+    const modo = document.getElementById('modo').value;
+
+    fetch('/guardar_audio', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'audio=' + encodeURIComponent(base64data) + '&modo=' + encodeURIComponent(modo)
+    })
+    .then(res => res.text())
+    .then(data => {
+        document.getElementById('status').innerText = data;
+    })
+    .catch(err => {
+        document.getElementById('status').innerText = 'Error: ' + err;
+    });
+};
+
+                reader.readAsDataURL(blob);
+            };
+
+            status.innerText = "Grabando...";
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+        } catch (err) {
+            alert('Error al acceder al micrófono: ' + err);
+        }
+    } else {
+        alert('El navegador no soporta grabación de audio.');
+    }
+};
+
+stopBtn.onclick = () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        status.innerText = "Detenido, enviando...";
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+    } else {
+        alert('No hay grabación en curso.');
+    }
+};
+</script>
+</body>
+</html>
