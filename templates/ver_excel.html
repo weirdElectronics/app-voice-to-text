@@ -7,15 +7,19 @@
 </head>
 <body>
   <h1>Mis gastos</h1>
-  <table border="1">
-    {% for fila in filas %}
-      <tr>
-        {% for celda in fila %}
-          <td>{{ celda }}</td>
-        {% endfor %}
-      </tr>
-    {% endfor %}
-  </table>
+  {% if filas|length > 1 %}
+    <table border="1">
+      {% for fila in filas %}
+        <tr>
+          {% for celda in fila %}
+            <td>{{ celda }}</td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p>No hay gastos registrados todavía.</p>
+  {% endif %}
   <a href="/">Volver</a>
 </body>
 </html>
