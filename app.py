@@ -6,9 +6,8 @@ import base64
 import openpyxl
 import re
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='', static_folder='static')
 
-# Usamos una carpeta local del servidor para guardar los documentos acumulados
 DATA_DIR = "./data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -125,4 +124,5 @@ def descargar_excel():
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
+
 
