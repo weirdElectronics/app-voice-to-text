@@ -144,6 +144,9 @@ def ver_word():
     if os.path.exists(WORD_PATH):
         doc = Document(WORD_PATH)
         contenido = [p.text for p in doc.paragraphs if p.text.strip()]
+        # Si no hay contenido, mostrar mensaje
+        if not contenido:
+            return "No hay transcripciones todavía."
         return render_template("ver_word.html", contenido=contenido)
     return "No hay documento Word disponible."
 
@@ -154,6 +157,9 @@ def ver_excel():
         wb = openpyxl.load_workbook(EXCEL_PATH)
         ws = wb.active
         filas = [[cell.value for cell in row] for row in ws.iter_rows()]
+        # Si solo existe la fila de encabezado, mostrar mensaje
+        if len(filas) <= 1:
+            return "No hay gastos registrados todavía."
         return render_template("ver_excel.html", filas=filas)
     return "No hay documento Excel disponible."
 
