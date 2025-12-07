@@ -6,7 +6,9 @@ import base64
 import openpyxl
 import re
 
-app = Flask(__name__, static_url_path='', static_folder='static')
+
+app = Flask(__name__, static_folder="static", template_folder="templates")
+
 
 DATA_DIR = "./data"
 os.makedirs(DATA_DIR, exist_ok=True)
