@@ -34,10 +34,10 @@
   <button onclick="window.location.href='/ver_word'">Ver Word online</button>
   <button onclick="window.location.href='/ver_excel'">Ver Excel online</button>
 
+  <!-- Indicadores -->
   <p id="feedback"></p>
   <p id="status"></p>
  
-
 <script>
 let mediaRecorder;
 let audioChunks = [];
@@ -46,6 +46,7 @@ const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const status = document.getElementById('status');
 const resetBtn = document.getElementById('resetBtn');
+const feedback = document.getElementById('feedback'); // 👈 nuevo indicador textual
 
 // ✅ Reset siempre disponible
 resetBtn.onclick = () => {
@@ -54,8 +55,10 @@ resetBtn.onclick = () => {
     }).then(res => res.text())
       .then(data => {
           status.innerText = data;
+          feedback.innerText = "📄 Documentos reiniciados"; // feedback inmediato
       }).catch(err => {
           status.innerText = 'Error: ' + err;
+          feedback.innerText = "⚠️ Error al resetear";
       });
 };
 
@@ -68,6 +71,8 @@ startBtn.onclick = async () => {
             mediaRecorder.start();
             audioChunks = [];
 
+            feedback.innerText = "🎙️ Grabación iniciada"; // 👈 indicador textual
+
             mediaRecorder.ondataavailable = event => {
                 if (event.data.size > 0) {
                     audioChunks.push(event.data);
@@ -75,6 +80,7 @@ startBtn.onclick = async () => {
             };
 
             mediaRecorder.onstop = () => {
+                feedback.innerText = "⏹️ Grabación detenida, procesando..."; // 👈 indicador textual
                 const blob = new Blob(audioChunks, { type: 'audio/webm' });
                 const reader = new FileReader();
 
@@ -92,9 +98,11 @@ startBtn.onclick = async () => {
                     .then(res => res.text())
                     .then(data => {
                         status.innerText = data;
+                        feedback.innerText = "✅ Audio enviado y guardado";
                     })
                     .catch(err => {
                         status.innerText = 'Error: ' + err;
+                        feedback.innerText = "⚠️ Error al enviar audio";
                     });
                 };
 
@@ -106,9 +114,11 @@ startBtn.onclick = async () => {
             stopBtn.disabled = false;
         } catch (err) {
             alert('Error al acceder al micrófono: ' + err);
+            feedback.innerText = "⚠️ No se pudo acceder al micrófono";
         }
     } else {
         alert('El navegador no soporta grabación de audio.');
+        feedback.innerText = "⚠️ Grabación no soportada";
     }
 };
 
@@ -116,14 +126,14 @@ stopBtn.onclick = () => {
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
         status.innerText = "Detenido, enviando...";
+        feedback.innerText = "⏹️ Grabación detenida"; // 👈 indicador textual
         startBtn.disabled = false;
         stopBtn.disabled = true;
     } else {
         alert('No hay grabación en curso.');
+        feedback.innerText = "⚠️ No hay grabación activa";
     }
 };
 </script>
 </body>
 </html>
-
-
