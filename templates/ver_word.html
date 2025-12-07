@@ -8,11 +8,15 @@
 </head>
 <body>
   <h1>Mis transcripciones</h1>
-  <ul>
-    {% for linea in contenido %}
-      <li>{{ linea }}</li>
-    {% endfor %}
-  </ul>
+  {% if contenido %}
+    <ul>
+      {% for linea in contenido %}
+        <li>{{ linea }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>No hay transcripciones todavía.</p>
+  {% endif %}
   <a href="/">Volver</a>
 </body>
 </html>
