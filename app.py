@@ -137,8 +137,27 @@ def descargar_excel():
                          mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     return "No hay documento Excel disponible."
 
+# NUEVAS RUTAS PARA VER ONLINE
+@app.route('/ver_word')
+def ver_word():
+    WORD_PATH, _ = get_paths()
+    if os.path.exists(WORD_PATH):
+        doc = Document(WORD_PATH)
+        contenido = [p.text for p in doc.paragraphs if p.text.strip()]
+        return render_template("ver_word.html", contenido=contenido)
+    return "No hay documento Word disponible."
+
+@app.route('/ver_excel')
+def ver_excel():
+    _, EXCEL_PATH = get_paths()
+    if os.path.exists(EXCEL_PATH):
+        wb = openpyxl.load_workbook(EXCEL_PATH)
+        ws = wb.active
+        filas = [[cell.value for cell in row] for row in ws.iter_rows()]
+        return render_template("ver_excel.html", filas=filas)
+    return "No hay documento Excel disponible."
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
-
 
 
