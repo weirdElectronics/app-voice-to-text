@@ -42,3 +42,10 @@ select {
   margin-top: 20px;
   font-weight: bold;
 }
+
+.logo {
+  display: block;
+  margin: 20px auto;       /* espacio arriba y abajo, centrada */
+  max-width: 100%;         /* ocupa todo el ancho disponible */
+  height: auto;            /* mantiene proporción */
+}
