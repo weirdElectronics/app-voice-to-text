@@ -1,20 +1,27 @@
-from flask import Flask, request, render_template, send_file
+from flask import Flask, request, render_template, send_file, session
 import speech_recognition as sr
 from docx import Document
 import os
 import base64
 import openpyxl
 import re
-
+import uuid
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
-
+app.secret_key = "clave_supersecreta"  # Necesario para manejar sesiones
 
 DATA_DIR = "./data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
-WORD_PATH = os.path.join(DATA_DIR, "transcripciones.docx")
-EXCEL_PATH = os.path.join(DATA_DIR, "gastos.xlsx")
+# Función para obtener rutas de archivos según el usuario
+def get_paths():
+    user_id = session.get("user_id")
+    if not user_id:
+        user_id = str(uuid.uuid4())
+        session["user_id"] = user_id
+    word_path = os.path.join(DATA_DIR, f"transcripciones_{user_id}.docx")
+    excel_path = os.path.join(DATA_DIR, f"gastos_{user_id}.xlsx")
+    return word_path, excel_path
 
 @app.route('/')
 def index():
@@ -41,6 +48,8 @@ def guardar_audio():
         texto = r.recognize_google(audio_rec, language="es-AR")
     except Exception as e:
         return f"Error al transcribir: {e}"
+
+    WORD_PATH, EXCEL_PATH = get_paths()
 
     if modo == "texto":
         if os.path.exists(WORD_PATH):
@@ -91,6 +100,8 @@ def guardar_audio():
 
 @app.route('/reset_documento', methods=['POST'])
 def reset_documento():
+    WORD_PATH, EXCEL_PATH = get_paths()
+
     if os.path.exists(WORD_PATH):
         os.remove(WORD_PATH)
     doc = Document()
@@ -104,10 +115,11 @@ def reset_documento():
     ws.append(["Descripción", "Monto"])
     wb.save(EXCEL_PATH)
 
-    return "Documentos reiniciados. Word y Excel están vacíos y listos para nuevas transcripciones."
+    return "Tus documentos fueron reiniciados. Word y Excel están vacíos y listos para nuevas transcripciones."
 
 @app.route('/descargar_word')
 def descargar_word():
+    WORD_PATH, _ = get_paths()
     if os.path.exists(WORD_PATH):
         return send_file(WORD_PATH,
                          as_attachment=True,
@@ -117,6 +129,7 @@ def descargar_word():
 
 @app.route('/descargar_excel')
 def descargar_excel():
+    _, EXCEL_PATH = get_paths()
     if os.path.exists(EXCEL_PATH):
         return send_file(EXCEL_PATH,
                          as_attachment=True,
@@ -126,5 +139,6 @@ def descargar_excel():
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
+
 
 
