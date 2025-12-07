@@ -2,23 +2,30 @@
 <html lang="es">
 <head>
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-<meta name="theme-color" content="#000000">
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cuanto gastaste Laura??</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <meta name="theme-color" content="#000000">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cuanto gastaste Laura??</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
+  <!-- Imagen centrada -->
+  <div style="text-align:center;">
+    <img src="{{ url_for('static', filename='LAURA.jpg') }}" alt="Laura" style="max-width:200px; height:auto;">
+  </div>
+
+  <!-- Título -->
+  <h1>Cuanto gastaste Laura??</h1>
+
+  <!-- Selector de modo -->
   <label for="modo">Modo:</label>
   <select id="modo">
     <option value="texto" selected>Texto</option>
     <option value="suma">Suma (gastos)</option>
   </select>
   <br><br>
-  <div style="text-align:center;">
-  <img src="{{ url_for('static', filename='LAURA.jpg') }}" alt="Laura" style="max-width:200px; height:auto;">
-</div>
-  <h1>Cuanto gastaste Laura??</h1>
+
+  <!-- Botones -->
   <button id="startBtn">Comenzar a Grabar</button>
   <button id="stopBtn" disabled>Detener y Enviar</button>
   <button id="resetBtn">Resetear documento</button>
