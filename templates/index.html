@@ -7,6 +7,8 @@
 
 <!-- Manifest y Service Worker -->
 <link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/service-worker.js')
