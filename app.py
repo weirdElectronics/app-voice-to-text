@@ -5,9 +5,15 @@ import os
 import base64
 import openpyxl
 import re
-import io
 
 app = Flask(__name__)
+
+# Usamos una carpeta local del servidor para guardar los documentos acumulados
+DATA_DIR = "./data"
+os.makedirs(DATA_DIR, exist_ok=True)
+
+WORD_PATH = os.path.join(DATA_DIR, "transcripciones.docx")
+EXCEL_PATH = os.path.join(DATA_DIR, "gastos.xlsx")
 
 @app.route('/')
 def index():
@@ -20,8 +26,8 @@ def guardar_audio():
     audio_data = audio_b64.split(',')[1]
     audio_bytes = base64.b64decode(audio_data)
 
-    webm_path = "grabacion.webm"
-    wav_path = "grabacion.wav"
+    webm_path = os.path.join(DATA_DIR, "grabacion.webm")
+    wav_path = os.path.join(DATA_DIR, "grabacion.wav")
     with open(webm_path, "wb") as f:
         f.write(audio_bytes)
 
@@ -36,31 +42,28 @@ def guardar_audio():
         return f"Error al transcribir: {e}"
 
     if modo == "texto":
-        # Crear documento Word en memoria
-        doc = Document()
+        if os.path.exists(WORD_PATH):
+            doc = Document(WORD_PATH)
+        else:
+            doc = Document()
+
         p = doc.add_paragraph(texto)
         run = p.runs[0]
         run.font.name = "Courier New"
 
-        file_stream = io.BytesIO()
-        doc.save(file_stream)
-        file_stream.seek(0)
-
-        return send_file(
-            file_stream,
-            as_attachment=True,
-            download_name="transcripcion.docx",
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        doc.save(WORD_PATH)
+        return f"Texto guardado en documento: {texto}"
 
     elif modo == "suma":
-        # Crear Excel en memoria
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Gastos"
-        ws.append(["Descripción", "Monto"])
+        if os.path.exists(EXCEL_PATH):
+            wb = openpyxl.load_workbook(EXCEL_PATH)
+            ws = wb.active
+        else:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Gastos"
+            ws.append(["Descripción", "Monto"])
 
-        # Buscar número en el texto
         match = re.search(r"(\d+(?:[.,]\d+)*)", texto.lower())
         if match:
             monto_str = match.group(1).replace(",", ".")
@@ -82,35 +85,43 @@ def guardar_audio():
         ws["A1"] = "TOTAL"
         ws["B1"] = total
 
-        file_stream = io.BytesIO()
-        wb.save(file_stream)
-        file_stream.seek(0)
-
-        return send_file(
-            file_stream,
-            as_attachment=True,
-            download_name="gastos.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        wb.save(EXCEL_PATH)
+        return f"Gasto registrado: {descripcion} (monto: {monto})"
 
 @app.route('/reset_documento', methods=['POST'])
 def reset_documento():
-    # Ya no se necesita borrar archivos en servidor,
-    # simplemente devolvemos documentos vacíos si se quiere reiniciar.
+    if os.path.exists(WORD_PATH):
+        os.remove(WORD_PATH)
     doc = Document()
-    file_stream_doc = io.BytesIO()
-    doc.save(file_stream_doc)
-    file_stream_doc.seek(0)
+    doc.save(WORD_PATH)
 
+    if os.path.exists(EXCEL_PATH):
+        os.remove(EXCEL_PATH)
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Gastos"
     ws.append(["Descripción", "Monto"])
-    file_stream_xlsx = io.BytesIO()
-    wb.save(file_stream_xlsx)
-    file_stream_xlsx.seek(0)
+    wb.save(EXCEL_PATH)
 
-    return "Documentos reiniciados (se generarán vacíos al descargar)."
+    return "Documentos reiniciados. Word y Excel están vacíos y listos para nuevas transcripciones."
+
+@app.route('/descargar_word')
+def descargar_word():
+    if os.path.exists(WORD_PATH):
+        return send_file(WORD_PATH,
+                         as_attachment=True,
+                         download_name="transcripciones.docx",
+                         mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    return "No hay documento Word disponible."
+
+@app.route('/descargar_excel')
+def descargar_excel():
+    if os.path.exists(EXCEL_PATH):
+        return send_file(EXCEL_PATH,
+                         as_attachment=True,
+                         download_name="gastos.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return "No hay documento Excel disponible."
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
