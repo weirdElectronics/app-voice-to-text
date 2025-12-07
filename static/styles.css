@@ -5,6 +5,7 @@ body {
   justify-content: center;
   height: 100vh;
   margin: 0;
+  padding-top: 20px; 
   font-family: 'Courier New', Courier, monospace; /* Fuente tipo máquina de escribir */
   background-color: black; /* Fondo negro */
   color: white; /* Texto blanco */
