@@ -22,7 +22,6 @@
   <button onclick="window.location.href='/ver_word'">Ver Word online</button>
   <button onclick="window.location.href='/ver_excel'">Ver Excel online</button>
 
-
   <p id="status"></p>
 
 <script>
@@ -33,6 +32,18 @@ const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const status = document.getElementById('status');
 const resetBtn = document.getElementById('resetBtn');
+
+// ✅ Reset siempre disponible
+resetBtn.onclick = () => {
+    fetch('/reset_documento', {
+        method: 'POST'
+    }).then(res => res.text())
+      .then(data => {
+          status.innerText = data;
+      }).catch(err => {
+          status.innerText = 'Error: ' + err;
+      });
+};
 
 startBtn.onclick = async () => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -46,17 +57,6 @@ startBtn.onclick = async () => {
                 if (event.data.size > 0) {
                     audioChunks.push(event.data);
                 }
-            };
-
-            resetBtn.onclick = () => {
-                fetch('/reset_documento', {
-                    method: 'POST'
-                }).then(res => res.text())
-                  .then(data => {
-                      document.getElementById('status').innerText = data;
-                  }).catch(err => {
-                      document.getElementById('status').innerText = 'Error: ' + err;
-                  });
             };
 
             mediaRecorder.onstop = () => {
@@ -76,10 +76,10 @@ startBtn.onclick = async () => {
                     })
                     .then(res => res.text())
                     .then(data => {
-                        document.getElementById('status').innerText = data;
+                        status.innerText = data;
                     })
                     .catch(err => {
-                        document.getElementById('status').innerText = 'Error: ' + err;
+                        status.innerText = 'Error: ' + err;
                     });
                 };
 
