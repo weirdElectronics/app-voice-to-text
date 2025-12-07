@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Gastos</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <h1>Mis gastos</h1>
+  <table border="1">
+    {% for fila in filas %}
+      <tr>
+        {% for celda in fila %}
+          <td>{{ celda }}</td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+  </table>
+  <a href="/">Volver</a>
+</body>
+</html>
