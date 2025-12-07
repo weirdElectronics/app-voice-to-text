@@ -1,0 +1,18 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Transcripciones</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <h1>Mis transcripciones</h1>
+  <ul>
+    {% for linea in contenido %}
+      <li>{{ linea }}</li>
+    {% endfor %}
+  </ul>
+  <a href="/">Volver</a>
+</body>
+</html>
