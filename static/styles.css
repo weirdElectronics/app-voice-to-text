@@ -45,7 +45,8 @@ select {
 
 .logo {
   display: block;
-  margin: 20px auto;       /* espacio arriba y abajo, centrada */
-  max-width: 100%;         /* ocupa todo el ancho disponible */
-  height: auto;            /* mantiene proporción */
+  margin: 20px auto;   /* espacio arriba y abajo, centrada */
+  max-width: 200px;    /* límite máximo de ancho */
+  height: auto;        /* mantiene proporción */
 }
+
