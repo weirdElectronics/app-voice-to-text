@@ -26,7 +26,19 @@ FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
 # -------------------------------
 # Parseo de montos en español
 # -------------------------------
+import re
+
 def parse_amount_es(texto: str):
+    """
+    Devuelve (monto_float, descripcion_sin_montos).
+    Soporta:
+      - "500.850" -> 500850.0
+      - "1.200,50" -> 1200.50
+      - "2.000.000" -> 2000000.0
+      - "2000.000" (ASR raro) -> 2000000.0
+      - "350 mil" -> 350000.0
+      - "350 mil 500" -> 350500.0
+    """
     t = texto.lower()
 
     # Caso "X mil Y" o "X mil"
@@ -40,38 +52,6 @@ def parse_amount_es(texto: str):
         desc = re.sub(r'\s+', ' ', desc).strip()
         return float(monto), desc
 
-    # Caso número con separadores
-    m_num = re.search(r'\d+(?:[.,]\d+)*', t)
-    if m_num:
-        raw = m_num.group(0)
-        s = raw.replace(' ', '')
-
-        if ',' in s and '.' in s:
-            s = s.replace('.', '').replace(',', '.')
-        elif '.' in s:
-            parts = s.split('.')
-            if s.count('.') > 1 or (len(parts) > 1 and len(parts[-1]) == 3):
-                s = ''.join(parts)  # 500.850 -> 500850, 2000.000 -> 2000000
-        elif ',' in s:
-            s = s.replace(',', '.')
-
-        try:
-            monto = float(s)
-        except:
-            monto = 0.0
-
-        desc = re.sub(re.escape(raw), '', t)
-        desc = re.sub(r'\bmil\b', '', desc)
-        desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', desc)
-        desc = re.sub(r'\s+', ' ', desc).strip()
-
-        return monto, desc
-
-    desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', t)
-    desc = re.sub(r'\s+', ' ', desc).strip()
-    return 0.0, desc
-
-
     # Número con separadores
     m_num = re.search(r'\d+(?:[.,]\d+)*', t)
     if m_num:
@@ -83,12 +63,10 @@ def parse_amount_es(texto: str):
             s = s.replace('.', '').replace(',', '.')
         elif '.' in s:
             parts = s.split('.')
-            # Si hay más de un punto, o la última parte tiene 3 dígitos -> tratar puntos como miles
+            # múltiples puntos o último bloque de 3 dígitos => puntos como miles
             if s.count('.') > 1 or (len(parts) > 1 and len(parts[-1]) == 3):
                 s = ''.join(parts)  # 500.850 -> 500850, 2000.000 -> 2000000
-            # Si solo hay un punto y no es miles -> puede ser decimal (ej: 400.5)
         elif ',' in s:
-            # Solo coma -> decimal
             s = s.replace(',', '.')
 
         try:
@@ -96,12 +74,11 @@ def parse_amount_es(texto: str):
         except:
             monto = 0.0
 
-        # "X mil" sin compuesto explícito (ej: "400 mil")
+        # “X mil” sin compuesto explícito (ej: "400 mil")
         if 'mil' in t and s.isdigit():
             monto *= 1000
 
         # Quitar el número y palabras de moneda de la descripción
-        # Usamos re.escape(raw) para borrar exactamente ese match
         desc = re.sub(re.escape(raw), '', t)
         desc = re.sub(r'\bmil\b', '', desc)
         desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', desc)
@@ -109,11 +86,10 @@ def parse_amount_es(texto: str):
 
         return monto, desc
 
-    # Si no hay número, devolvemos 0 y la frase limpia
+    # Sin número: devolver texto limpio
     desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', t)
     desc = re.sub(r'\s+', ' ', desc).strip()
     return 0.0, desc
-
 
 # -------------------------------
 # OAuth y Drive helpers
@@ -378,7 +354,7 @@ def guardar_audio():
         doc.add_paragraph(texto)
         save_word_to_drive(user_id, doc)
         return f"Texto guardado en documento: {texto}"
-
+        
     elif modo == "suma":
         # Crear workbook temporal con la fila del nuevo gasto
         wb = openpyxl.Workbook()
@@ -388,6 +364,12 @@ def guardar_audio():
         monto, descripcion = parse_amount_es(texto)
         if not descripcion:
             descripcion = "Gasto"
+
+        ws.append([descripcion, monto])
+
+        save_excel_to_drive(user_id, wb)
+        return f"Gasto registrado: {descripcion} (monto: {monto})"
+
 
         ws.append([descripcion, monto])
 
