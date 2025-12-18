@@ -128,6 +128,17 @@ def guardar_audio():
         save_excel_to_drive(user_id, wb)
         return f"Gasto registrado: {descripcion} (monto: {monto})"
 
+@app.route('/test_drive')
+def test_drive():
+    user_id = get_user_id()
+    content = b"Hola Micaela, esto es una prueba."
+    try:
+        file_id = upload_to_drive(user_id, content, "prueba.txt", "text/plain")
+        return f"Archivo subido a Drive con ID: {file_id}"
+    except Exception as e:
+        return f"Error al subir a Drive: {e}"
+
+
 # Las rutas de reset y descarga ahora deberían adaptarse para leer desde Drive,
 # pero como primer paso ya tenés la subida funcionando.
 
