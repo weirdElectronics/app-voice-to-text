@@ -97,15 +97,81 @@ def save_word_to_drive(user_id, doc):
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
-    return upload_to_drive(user_id, buffer.getvalue(), "transcripciones.docx",
-                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+    creds = get_credentials()
+    if not isinstance(creds, Credentials):
+        return creds
+
+    drive_service = build_drive_service(creds)
+    filename = f"{user_id}_transcripciones.docx"
+
+    # Buscar si ya existe el archivo en la carpeta
+    query = f"name='{filename}'"
+    if FOLDER_ID:
+        query += f" and '{FOLDER_ID}' in parents"
+
+    results = drive_service.files().list(q=query, fields="files(id)").execute()
+    items = results.get("files", [])
+
+    media = MediaIoBaseUpload(
+        buffer,
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        resumable=True
+    )
+
+    if items:
+        # Actualizar archivo existente
+        file_id = items[0]["id"]
+        updated = drive_service.files().update(fileId=file_id, media_body=media).execute()
+        return updated.get("id")
+    else:
+        # Crear nuevo archivo
+        file_metadata = {"name": filename}
+        if FOLDER_ID:
+            file_metadata["parents"] = [FOLDER_ID]
+        created = drive_service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+        return created.get("id")
+
 
 def save_excel_to_drive(user_id, wb):
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
-    return upload_to_drive(user_id, buffer.getvalue(), "gastos.xlsx",
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    creds = get_credentials()
+    if not isinstance(creds, Credentials):
+        return creds
+
+    drive_service = build_drive_service(creds)
+    filename = f"{user_id}_gastos.xlsx"
+
+    # Buscar si ya existe el archivo en la carpeta
+    query = f"name='{filename}'"
+    if FOLDER_ID:
+        query += f" and '{FOLDER_ID}' in parents"
+
+    results = drive_service.files().list(q=query, fields="files(id)").execute()
+    items = results.get("files", [])
+
+    media = MediaIoBaseUpload(
+        buffer,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        resumable=True
+    )
+
+    if items:
+        # Actualizar archivo existente
+        file_id = items[0]["id"]
+        updated = drive_service.files().update(fileId=file_id, media_body=media).execute()
+        return updated.get("id")
+    else:
+        # Crear nuevo archivo
+        file_metadata = {"name": filename}
+        if FOLDER_ID:
+            file_metadata["parents"] = [FOLDER_ID]
+        created = drive_service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+        return created.get("id")
+
 
 # --- Rutas ---
 @app.route('/')
