@@ -93,11 +93,7 @@ def upload_to_drive(user_id, file_bytes, filename, mime_type):
     ).execute()
     return file.get('id')
 
-def save_word_to_drive(user_id, doc):
-    buffer = BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-
+ def save_word_to_drive(user_id, new_doc):
     creds = get_credentials()
     if not isinstance(creds, Credentials):
         return creds
@@ -105,39 +101,50 @@ def save_word_to_drive(user_id, doc):
     drive_service = build_drive_service(creds)
     filename = f"{user_id}_transcripciones.docx"
 
-    # Buscar si ya existe el archivo en la carpeta
+    # Buscar archivo existente
     query = f"name='{filename}'"
     if FOLDER_ID:
         query += f" and '{FOLDER_ID}' in parents"
-
     results = drive_service.files().list(q=query, fields="files(id)").execute()
     items = results.get("files", [])
 
-    media = MediaIoBaseUpload(
-        buffer,
-        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        resumable=True
-    )
-
     if items:
-        # Actualizar archivo existente
+        # Descargar archivo existente
         file_id = items[0]["id"]
+        request = drive_service.files().get_media(fileId=file_id)
+        existing_buffer = BytesIO()
+        downloader = MediaIoBaseDownload(existing_buffer, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        existing_buffer.seek(0)
+
+        # Abrir documento existente y agregar texto
+        existing_doc = Document(existing_buffer)
+        for p in new_doc.paragraphs:
+            existing_doc.add_paragraph(p.text)
+
+        # Guardar y subir actualización
+        buffer = BytesIO()
+        existing_doc.save(buffer)
+        buffer.seek(0)
+        media = MediaIoBaseUpload(buffer, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document", resumable=True)
         updated = drive_service.files().update(fileId=file_id, media_body=media).execute()
         return updated.get("id")
     else:
         # Crear nuevo archivo
+        buffer = BytesIO()
+        new_doc.save(buffer)
+        buffer.seek(0)
         file_metadata = {"name": filename}
         if FOLDER_ID:
             file_metadata["parents"] = [FOLDER_ID]
-        created = drive_service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+        created = drive_service.files().create(body=file_metadata, media_body=MediaIoBaseUpload(buffer, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document", resumable=True), fields="id").execute()
         return created.get("id")
 
 
-def save_excel_to_drive(user_id, wb):
-    buffer = BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
 
+def save_excel_to_drive(user_id, new_wb):
     creds = get_credentials()
     if not isinstance(creds, Credentials):
         return creds
@@ -145,31 +152,51 @@ def save_excel_to_drive(user_id, wb):
     drive_service = build_drive_service(creds)
     filename = f"{user_id}_gastos.xlsx"
 
-    # Buscar si ya existe el archivo en la carpeta
+    # Buscar archivo existente
     query = f"name='{filename}'"
     if FOLDER_ID:
         query += f" and '{FOLDER_ID}' in parents"
-
     results = drive_service.files().list(q=query, fields="files(id)").execute()
     items = results.get("files", [])
 
-    media = MediaIoBaseUpload(
-        buffer,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        resumable=True
-    )
-
     if items:
-        # Actualizar archivo existente
+        # Descargar archivo existente
         file_id = items[0]["id"]
+        request = drive_service.files().get_media(fileId=file_id)
+        existing_buffer = BytesIO()
+        downloader = MediaIoBaseDownload(existing_buffer, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        existing_buffer.seek(0)
+
+        # Abrir workbook existente y agregar datos
+        existing_wb = openpyxl.load_workbook(existing_buffer)
+        ws = existing_wb.active
+        for row in new_wb.active.iter_rows(values_only=True):
+            ws.append(row)
+
+        # Recalcular total
+        total = sum(cell.value for cell in ws["B"][2:] if isinstance(cell.value, (int, float)))
+        ws["A1"] = "TOTAL"
+        ws["B1"] = total
+
+        # Guardar y subir actualización
+        buffer = BytesIO()
+        existing_wb.save(buffer)
+        buffer.seek(0)
+        media = MediaIoBaseUpload(buffer, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", resumable=True)
         updated = drive_service.files().update(fileId=file_id, media_body=media).execute()
         return updated.get("id")
     else:
         # Crear nuevo archivo
+        buffer = BytesIO()
+        new_wb.save(buffer)
+        buffer.seek(0)
         file_metadata = {"name": filename}
         if FOLDER_ID:
             file_metadata["parents"] = [FOLDER_ID]
-        created = drive_service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+        created = drive_service.files().create(body=file_metadata, media_body=MediaIoBaseUpload(buffer, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", resumable=True), fields="id").execute()
         return created.get("id")
 
 
