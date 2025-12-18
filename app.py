@@ -9,7 +9,7 @@ import re
 import uuid
 from io import BytesIO
 
-# Librerías de Google Drive (OAuth)
+# Google Drive (OAuth)
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
@@ -23,7 +23,74 @@ SCOPES = ['https://www.googleapis.com/auth/drive.file']
 CREDENTIALS_FILE = 'credentials.json'
 FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
 
-# --- Autenticación OAuth ---
+# -------------------------------
+# Parseo de montos en español
+# -------------------------------
+def parse_amount_es(texto: str):
+    """
+    Devuelve (monto_float, descripcion_sin_montos).
+    Soporta:
+      - "500.850" (miles con punto) => 500850.0
+      - "1.200,50" (miles con punto, decimales con coma) => 1200.50
+      - "400 mil 500" => 400500.0
+      - "400 mil" => 400000.0
+    """
+    t = texto.lower()
+
+    # Caso "X mil Y" o "X mil"
+    m_compuesto = re.search(r'(\d+)\s*mil(?:\s*(\d+))?', t)
+    if m_compuesto:
+        x = int(m_compuesto.group(1))
+        y = int(m_compuesto.group(2)) if m_compuesto.group(2) else 0
+        monto = x * 1000 + y
+        desc = re.sub(r'(\d+\s*mil(?:\s*\d+)?)', '', t)
+        desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', desc)
+        desc = re.sub(r'\s+', ' ', desc).strip()
+        return float(monto), desc
+
+    # Número con separadores (miles y/o decimales)
+    m_num = re.search(r'\d+(?:[.,]\d+)*', t)
+    if m_num:
+        raw = m_num.group(0)
+        s = raw.replace(' ', '')
+
+        if ',' in s and '.' in s:
+            # puntos como miles, coma como decimales: 1.234,56 -> 1234.56
+            s = s.replace('.', '').replace(',', '.')
+        elif '.' in s:
+            parts = s.split('.')
+            # Si la última parte tiene 3 dígitos y hay varias partes: tratar "." como miles
+            if len(parts) > 1 and len(parts[-1]) == 3:
+                s = ''.join(parts)  # 500.850 -> 500850
+        elif ',' in s:
+            # Solo coma -> decimal
+            s = s.replace(',', '.')
+
+        try:
+            monto = float(s)
+        except:
+            monto = 0.0
+
+        # "400 mil" sin el caso compuesto explícito
+        if 'mil' in t and s.isdigit():
+            monto *= 1000
+
+        # Quitar el número y palabras de moneda de la descripción
+        desc = t.replace(raw, '')
+        desc = re.sub(r'\bmil\b', '', desc)
+        desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', desc)
+        desc = re.sub(r'\s+', ' ', desc).strip()
+
+        return monto, desc
+
+    # Si no hay número, devolvemos 0 y la frase limpia
+    desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', t)
+    desc = re.sub(r'\s+', ' ', desc).strip()
+    return 0.0, desc
+
+# -------------------------------
+# OAuth y Drive helpers
+# -------------------------------
 def get_credentials():
     if os.path.exists("token.json"):
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
@@ -59,7 +126,6 @@ def oauth2callback():
 def build_drive_service(creds):
     return build("drive", "v3", credentials=creds)
 
-# --- user_id por sesión ---
 def get_user_id():
     user_id = session.get("user_id")
     if not user_id:
@@ -67,7 +133,9 @@ def get_user_id():
         session["user_id"] = user_id
     return user_id
 
-# --- Guardar Word acumulativo ---
+# -------------------------------
+# Guardar Word acumulativo
+# -------------------------------
 def save_word_to_drive(user_id, new_doc):
     creds = get_credentials()
     if not isinstance(creds, Credentials):
@@ -124,7 +192,9 @@ def save_word_to_drive(user_id, new_doc):
         ).execute()
         return created.get("id")
 
-# --- Guardar Excel acumulativo ---
+# -------------------------------
+# Guardar Excel acumulativo (único TOTAL al final)
+# -------------------------------
 def save_excel_to_drive(user_id, new_wb):
     creds = get_credentials()
     if not isinstance(creds, Credentials):
@@ -140,7 +210,7 @@ def save_excel_to_drive(user_id, new_wb):
     items = results.get("files", [])
 
     if items:
-        # Si ya existe el Excel en Drive, lo descargamos
+        # Descargar y abrir existente
         file_id = items[0]["id"]
         request = drive_service.files().get_media(fileId=file_id)
         existing_buffer = BytesIO()
@@ -153,30 +223,43 @@ def save_excel_to_drive(user_id, new_wb):
         existing_wb = openpyxl.load_workbook(existing_buffer)
         ws = existing_wb.active
 
-        # Agregar filas nuevas desde el workbook temporal
-        for row in new_wb.active.iter_rows(values_only=True):
+        # Agregar filas nuevas (sin encabezados)
+        for i, row in enumerate(new_wb.active.iter_rows(values_only=True)):
+            # si detecta posible encabezado en la primera fila, lo salta
+            if i == 0 and row and len(row) >= 2:
+                header_like = (
+                    isinstance(row[0], str) and "descrip" in row[0].lower()
+                    or isinstance(row[1], str) and "monto" in row[1].lower()
+                )
+                if header_like:
+                    continue
             ws.append(row)
 
-        # Recalcular total correctamente
+        # Recalcular TOTAL ignorando encabezados y cualquier fila TOTAL previa
         filas = list(ws.iter_rows(values_only=True))
         montos = []
-        for fila in filas[1:]:  # ignoramos encabezados
-            if fila[0] and str(fila[0]).upper() == "TOTAL":
-                continue  # ignoramos fila TOTAL existente
-            if isinstance(fila[1], (int, float)):
+        for fila in filas:
+            if not fila:
+                continue
+            # Encabezado
+            if isinstance(fila[0], str) and "descrip" in fila[0].lower():
+                continue
+            # Fila TOTAL existente
+            if isinstance(fila[0], str) and fila[0].strip().upper() == "TOTAL":
+                continue
+            # Sumar montos válidos
+            if len(fila) > 1 and isinstance(fila[1], (int, float)):
                 montos.append(fila[1])
 
         total = sum(montos)
 
-        # Si la última fila ya es TOTAL, actualizamos su valor
-        ultima_fila = filas[-1]
-        if ultima_fila[0] and str(ultima_fila[0]).upper() == "TOTAL":
+        # Actualizar o crear la fila TOTAL al final
+        if filas and isinstance(filas[-1][0], str) and filas[-1][0].strip().upper() == "TOTAL":
             ws.cell(row=len(filas), column=2, value=total)
         else:
-            # Agregamos una nueva fila TOTAL al final
             ws.append(["TOTAL", total])
 
-        # Guardar y subir actualización
+        # Subir actualización
         buffer = BytesIO()
         existing_wb.save(buffer)
         buffer.seek(0)
@@ -189,9 +272,22 @@ def save_excel_to_drive(user_id, new_wb):
         return file_id
 
     else:
-        # Si no existe, creamos un nuevo Excel desde cero
+        # Crear nuevo Excel con encabezados y TOTAL único
+        base_wb = openpyxl.Workbook()
+        base_ws = base_wb.active
+        base_ws.title = "Gastos"
+        base_ws.append(["Descripción", "Monto"])
+
+        for row in new_wb.active.iter_rows(values_only=True):
+            base_ws.append(row)
+
+        filas = list(base_ws.iter_rows(values_only=True))
+        montos = [fila[1] for fila in filas[1:] if len(fila) > 1 and isinstance(fila[1], (int, float))]
+        total = sum(montos)
+        base_ws.append(["TOTAL", total])
+
         buffer = BytesIO()
-        new_wb.save(buffer)
+        base_wb.save(buffer)
         buffer.seek(0)
         file_metadata = {"name": filename}
         if FOLDER_ID:
@@ -207,8 +303,9 @@ def save_excel_to_drive(user_id, new_wb):
         ).execute()
         return created.get("id")
 
-
-# --- Rutas base ---
+# -------------------------------
+# Rutas base
+# -------------------------------
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -243,34 +340,23 @@ def guardar_audio():
         return f"Texto guardado en documento: {texto}"
 
     elif modo == "suma":
+        # Crear workbook temporal con la fila del nuevo gasto
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Gastos"
-        ws.append(["Descripción", "Monto"])
 
-        match = re.search(r"(\d+(?:[.,]\d+)*)", texto.lower())
-        if match:
-            monto_str = match.group(1).replace(",", ".")
-            try:
-                monto = float(monto_str)
-            except:
-                monto = 0.0
-            if "mil" in texto.lower():
-                monto *= 1000
-        else:
-            monto = 0.0
+        monto, descripcion = parse_amount_es(texto)
+        if not descripcion:
+            descripcion = "Gasto"
 
-        descripcion = texto.replace(match.group(1), "").strip() if match else texto
         ws.append([descripcion, monto])
-
-        total = sum(cell.value for cell in ws["B"][1:] if isinstance(cell.value, (int, float)))
-        ws["A1"] = "TOTAL"
-        ws["B1"] = total
 
         save_excel_to_drive(user_id, wb)
         return f"Gasto registrado: {descripcion} (monto: {monto})"
 
-# --- Ver documentos online ---
+# -------------------------------
+# Ver online
+# -------------------------------
 @app.route('/ver_word')
 def ver_word():
     user_id = get_user_id()
@@ -334,7 +420,9 @@ def ver_excel():
     filas = [row for row in ws.iter_rows(values_only=True)]
     return render_template("ver_excel.html", filas=filas)
 
-# --- Descargar documentos ---
+# -------------------------------
+# Descargar
+# -------------------------------
 @app.route('/descargar_doc')
 def descargar_doc():
     user_id = get_user_id()
@@ -393,7 +481,9 @@ def descargar_excel():
 
     return send_file(buffer, as_attachment=True, download_name="gastos.xlsx")
 
-# --- Resetear documentos del usuario ---
+# -------------------------------
+# Reset documentos
+# -------------------------------
 @app.route('/reset_documento', methods=['POST'])
 def reset_documento():
     user_id = get_user_id()
@@ -420,9 +510,10 @@ def reset_documento():
     else:
         return "No había documentos para reiniciar."
 
-# --- Arranque ---
+# -------------------------------
+# Arranque
+# -------------------------------
 if __name__ == "__main__":
-    # Para pruebas locales con HTTP:
+    # Para pruebas locales sin HTTPS:
     # export OAUTHLIB_INSECURE_TRANSPORT=1
     app.run(debug=True, host="0.0.0.0", port=5000)
-
