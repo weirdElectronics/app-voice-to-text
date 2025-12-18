@@ -1,4 +1,5 @@
-from flask import Flask, request, render_template, send_file, session
+
+from flask import Flask, request, render_template, send_file, session, redirect, url_for
 import speech_recognition as sr
 from docx import Document
 import os
@@ -8,8 +9,9 @@ import re
 import uuid
 from io import BytesIO
 
-# Librerías de Google Drive
-from google.oauth2 import service_account
+# Librerías de Google Drive (OAuth)
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
@@ -18,14 +20,51 @@ app.secret_key = "clave_supersecreta"  # Necesario para manejar sesiones
 
 # Configuración Google Drive
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
-SERVICE_ACCOUNT_FILE = 'service_account.json'  # archivo secreto en Render
-FOLDER_ID = "1p8HksHmMjaJ0rcOG9lj8OOrqL43r_-8f"  # tu carpeta AppData
+CREDENTIALS_FILE = 'credentials.json'  # archivo OAuth descargado
+FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")  # carpeta AppData en tu Drive
 
-credentials = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-drive_service = build('drive', 'v3', credentials=credentials)
+# --- Funciones de autenticación OAuth ---
+def get_credentials():
+    # Si ya existe token.json y es válido
+    if os.path.exists("token.json"):
+        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+        if creds and creds.valid:
+            return creds
 
-# Función para obtener user_id
+    # Si no existe token.json, iniciar flujo OAuth
+    flow = Flow.from_client_secrets_file(
+        CREDENTIALS_FILE,
+        scopes=SCOPES,
+        redirect_uri=url_for("oauth2callback", _external=True)
+    )
+    auth_url, state = flow.authorization_url(
+        access_type="offline",
+        include_granted_scopes="true",
+        prompt="consent"
+    )
+    session["oauth_state"] = state
+    return redirect(auth_url)
+
+@app.route("/oauth2callback")
+def oauth2callback():
+    state = session.get("oauth_state")
+    flow = Flow.from_client_secrets_file(
+        CREDENTIALS_FILE,
+        scopes=SCOPES,
+        redirect_uri=url_for("oauth2callback", _external=True)
+    )
+    flow.fetch_token(authorization_response=request.url)
+    creds = flow.credentials
+
+    # Guardamos token para futuras ejecuciones
+    with open("token.json", "w") as f:
+        f.write(creds.to_json())
+    return redirect(url_for("test_drive"))
+
+def build_drive_service(creds):
+    return build("drive", "v3", credentials=creds)
+
+# --- Función para obtener user_id ---
 def get_user_id():
     user_id = session.get("user_id")
     if not user_id:
@@ -33,12 +72,19 @@ def get_user_id():
         session["user_id"] = user_id
     return user_id
 
-# Funciones para subir a Drive
+# --- Funciones para subir a Drive ---
 def upload_to_drive(user_id, file_bytes, filename, mime_type):
+    creds = get_credentials()
+    if not isinstance(creds, Credentials):
+        return creds  # redirige a Google OAuth si falta autorización
+
+    drive_service = build_drive_service(creds)
     file_metadata = {
-        'name': f"{user_id}_{filename}",
-        'parents': [FOLDER_ID]
+        'name': f"{user_id}_{filename}"
     }
+    if FOLDER_ID:
+        file_metadata['parents'] = [FOLDER_ID]
+
     media = MediaIoBaseUpload(BytesIO(file_bytes), mimetype=mime_type, resumable=True)
     file = drive_service.files().create(
         body=file_metadata,
@@ -61,6 +107,7 @@ def save_excel_to_drive(user_id, wb):
     return upload_to_drive(user_id, buffer.getvalue(), "gastos.xlsx",
                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
+# --- Rutas ---
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -138,11 +185,6 @@ def test_drive():
     except Exception as e:
         return f"Error al subir a Drive: {e}"
 
-
-# Las rutas de reset y descarga ahora deberían adaptarse para leer desde Drive,
-# pero como primer paso ya tenés la subida funcionando.
-
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
-
 
