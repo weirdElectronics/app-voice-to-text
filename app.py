@@ -140,6 +140,7 @@ def save_excel_to_drive(user_id, new_wb):
     items = results.get("files", [])
 
     if items:
+        # Si ya existe el Excel en Drive, lo descargamos
         file_id = items[0]["id"]
         request = drive_service.files().get_media(fileId=file_id)
         existing_buffer = BytesIO()
@@ -152,15 +153,30 @@ def save_excel_to_drive(user_id, new_wb):
         existing_wb = openpyxl.load_workbook(existing_buffer)
         ws = existing_wb.active
 
-        # Agregar filas nuevas
+        # Agregar filas nuevas desde el workbook temporal
         for row in new_wb.active.iter_rows(values_only=True):
             ws.append(row)
 
-        # Recalcular total (asumiendo que la columna B es "Monto")
-        total = sum(cell.value for cell in ws["B"][2:] if isinstance(cell.value, (int, float)))
-        ws["A1"] = "TOTAL"
-        ws["B1"] = total
+        # Recalcular total correctamente
+        filas = list(ws.iter_rows(values_only=True))
+        montos = []
+        for fila in filas[1:]:  # ignoramos encabezados
+            if fila[0] and str(fila[0]).upper() == "TOTAL":
+                continue  # ignoramos fila TOTAL existente
+            if isinstance(fila[1], (int, float)):
+                montos.append(fila[1])
 
+        total = sum(montos)
+
+        # Si la última fila ya es TOTAL, actualizamos su valor
+        ultima_fila = filas[-1]
+        if ultima_fila[0] and str(ultima_fila[0]).upper() == "TOTAL":
+            ws.cell(row=len(filas), column=2, value=total)
+        else:
+            # Agregamos una nueva fila TOTAL al final
+            ws.append(["TOTAL", total])
+
+        # Guardar y subir actualización
         buffer = BytesIO()
         existing_wb.save(buffer)
         buffer.seek(0)
@@ -171,7 +187,9 @@ def save_excel_to_drive(user_id, new_wb):
         )
         drive_service.files().update(fileId=file_id, media_body=media).execute()
         return file_id
+
     else:
+        # Si no existe, creamos un nuevo Excel desde cero
         buffer = BytesIO()
         new_wb.save(buffer)
         buffer.seek(0)
@@ -188,6 +206,7 @@ def save_excel_to_drive(user_id, new_wb):
             fields="id"
         ).execute()
         return created.get("id")
+
 
 # --- Rutas base ---
 @app.route('/')
