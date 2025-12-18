@@ -29,16 +29,6 @@ FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
 import re
 
 def parse_amount_es(texto: str):
-    """
-    Devuelve (monto_float, descripcion_sin_montos).
-    Soporta:
-      - "500.850" -> 500850.0
-      - "1.200,50" -> 1200.50
-      - "2.000.000" -> 2000000.0
-      - "2000.000" (ASR raro) -> 2000000.0
-      - "350 mil" -> 350000.0
-      - "350 mil 500" -> 350500.0
-    """
     t = texto.lower()
 
     # Caso "X mil Y" o "X mil"
@@ -52,39 +42,29 @@ def parse_amount_es(texto: str):
         desc = re.sub(r'\s+', ' ', desc).strip()
         return float(monto), desc
 
-    # Número con separadores
-    m_num = re.search(r'\d+(?:[.,]\d+)*', t)
+    # Detectar números con ceros sueltos (ej: "000 400" -> "400000")
+    m_num = re.findall(r'\d+', t)
     if m_num:
-        raw = m_num.group(0)
-        s = raw.replace(' ', '')
-
-        if ',' in s and '.' in s:
-            # puntos como miles, coma como decimales: 1.234,56 -> 1234.56
-            s = s.replace('.', '').replace(',', '.')
-        elif '.' in s:
-            parts = s.split('.')
-            # múltiples puntos o último bloque de 3 dígitos => puntos como miles
-            if s.count('.') > 1 or (len(parts) > 1 and len(parts[-1]) == 3):
-                s = ''.join(parts)  # 500.850 -> 500850, 2000.000 -> 2000000
-        elif ',' in s:
-            s = s.replace(',', '.')
-
+        # Si hay varios grupos de dígitos seguidos, los concatenamos
+        s = ''.join(m_num)
         try:
             monto = float(s)
         except:
             monto = 0.0
 
-        # “X mil” sin compuesto explícito (ej: "400 mil")
-        if 'mil' in t and s.isdigit():
-            monto *= 1000
-
-        # Quitar el número y palabras de moneda de la descripción
-        desc = re.sub(re.escape(raw), '', t)
+        # Quitar todos los grupos numéricos de la descripción
+        desc = re.sub(r'\d+', '', t)
         desc = re.sub(r'\bmil\b', '', desc)
         desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', desc)
         desc = re.sub(r'\s+', ' ', desc).strip()
 
         return monto, desc
+
+    # Sin número: devolver texto limpio
+    desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', t)
+    desc = re.sub(r'\s+', ' ', desc).strip()
+    return 0.0, desc
+
 
     # Sin número: devolver texto limpio
     desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', t)
