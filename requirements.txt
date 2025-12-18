@@ -1,5 +1,5 @@
 Flask
-speechrecognition
+Speechrecognition
 python-docx
 gunicorn
 openpyxl
