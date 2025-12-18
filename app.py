@@ -16,20 +16,19 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
-app.secret_key = "clave_supersecreta"  # Necesario para manejar sesiones
+app.secret_key = "clave_supersecreta"
 
 # Configuración Google Drive
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
-CREDENTIALS_FILE = 'credentials.json'  # archivo OAuth descargado
-FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")  # carpeta AppData en tu Drive
+CREDENTIALS_FILE = 'credentials.json'
+FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
 
-# --- Funciones de autenticación OAuth ---
+# --- Autenticación OAuth ---
 def get_credentials():
     if os.path.exists("token.json"):
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
         if creds and creds.valid:
             return creds
-
     flow = Flow.from_client_secrets_file(
         CREDENTIALS_FILE,
         scopes=SCOPES,
@@ -53,15 +52,14 @@ def oauth2callback():
     )
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
-
     with open("token.json", "w") as f:
         f.write(creds.to_json())
-    return redirect(url_for("test_drive"))
+    return redirect(url_for("index"))
 
 def build_drive_service(creds):
     return build("drive", "v3", credentials=creds)
 
-# --- Función para obtener user_id ---
+# --- user_id por sesión ---
 def get_user_id():
     user_id = session.get("user_id")
     if not user_id:
@@ -69,36 +67,18 @@ def get_user_id():
         session["user_id"] = user_id
     return user_id
 
-# --- Funciones para subir a Drive ---
-def upload_to_drive(user_id, file_bytes, filename, mime_type):
-    creds = get_credentials()
-    if not isinstance(creds, Credentials):
-        return creds
-
-    drive_service = build_drive_service(creds)
-    file_metadata = {'name': f"{user_id}_{filename}"}
-    if FOLDER_ID:
-        file_metadata['parents'] = [FOLDER_ID]
-
-    media = MediaIoBaseUpload(BytesIO(file_bytes), mimetype=mime_type, resumable=True)
-    file = drive_service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields='id'
-    ).execute()
-    return file.get('id')
-
+# --- Guardar Word acumulativo ---
 def save_word_to_drive(user_id, new_doc):
     creds = get_credentials()
     if not isinstance(creds, Credentials):
         return creds
-
     drive_service = build_drive_service(creds)
-    filename = f"{user_id}_transcripciones.docx"
 
+    filename = f"{user_id}_transcripciones.docx"
     query = f"name='{filename}'"
     if FOLDER_ID:
         query += f" and '{FOLDER_ID}' in parents"
+
     results = drive_service.files().list(q=query, fields="files(id)").execute()
     items = results.get("files", [])
 
@@ -119,9 +99,13 @@ def save_word_to_drive(user_id, new_doc):
         buffer = BytesIO()
         existing_doc.save(buffer)
         buffer.seek(0)
-        media = MediaIoBaseUpload(buffer, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document", resumable=True)
-        updated = drive_service.files().update(fileId=file_id, media_body=media).execute()
-        return updated.get("id")
+        media = MediaIoBaseUpload(
+            buffer,
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            resumable=True
+        )
+        drive_service.files().update(fileId=file_id, media_body=media).execute()
+        return file_id
     else:
         buffer = BytesIO()
         new_doc.save(buffer)
@@ -131,22 +115,27 @@ def save_word_to_drive(user_id, new_doc):
             file_metadata["parents"] = [FOLDER_ID]
         created = drive_service.files().create(
             body=file_metadata,
-            media_body=MediaIoBaseUpload(buffer, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document", resumable=True),
+            media_body=MediaIoBaseUpload(
+                buffer,
+                mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                resumable=True
+            ),
             fields="id"
         ).execute()
         return created.get("id")
 
+# --- Guardar Excel acumulativo ---
 def save_excel_to_drive(user_id, new_wb):
     creds = get_credentials()
     if not isinstance(creds, Credentials):
         return creds
-
     drive_service = build_drive_service(creds)
-    filename = f"{user_id}_gastos.xlsx"
 
+    filename = f"{user_id}_gastos.xlsx"
     query = f"name='{filename}'"
     if FOLDER_ID:
         query += f" and '{FOLDER_ID}' in parents"
+
     results = drive_service.files().list(q=query, fields="files(id)").execute()
     items = results.get("files", [])
 
@@ -162,9 +151,12 @@ def save_excel_to_drive(user_id, new_wb):
 
         existing_wb = openpyxl.load_workbook(existing_buffer)
         ws = existing_wb.active
+
+        # Agregar filas nuevas
         for row in new_wb.active.iter_rows(values_only=True):
             ws.append(row)
 
+        # Recalcular total (asumiendo que la columna B es "Monto")
         total = sum(cell.value for cell in ws["B"][2:] if isinstance(cell.value, (int, float)))
         ws["A1"] = "TOTAL"
         ws["B1"] = total
@@ -172,9 +164,13 @@ def save_excel_to_drive(user_id, new_wb):
         buffer = BytesIO()
         existing_wb.save(buffer)
         buffer.seek(0)
-        media = MediaIoBaseUpload(buffer, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", resumable=True)
-        updated = drive_service.files().update(fileId=file_id, media_body=media).execute()
-        return updated.get("id")
+        media = MediaIoBaseUpload(
+            buffer,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            resumable=True
+        )
+        drive_service.files().update(fileId=file_id, media_body=media).execute()
+        return file_id
     else:
         buffer = BytesIO()
         new_wb.save(buffer)
@@ -184,12 +180,16 @@ def save_excel_to_drive(user_id, new_wb):
             file_metadata["parents"] = [FOLDER_ID]
         created = drive_service.files().create(
             body=file_metadata,
-            media_body=MediaIoBaseUpload(buffer, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", resumable=True),
+            media_body=MediaIoBaseUpload(
+                buffer,
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                resumable=True
+            ),
             fields="id"
         ).execute()
         return created.get("id")
 
-# --- Rutas ---
+# --- Rutas base ---
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -205,7 +205,6 @@ def guardar_audio():
     wav_path = "grabacion.wav"
     with open(webm_path, "wb") as f:
         f.write(audio_bytes)
-
     os.system(f"ffmpeg -y -i {webm_path} -ar 16000 -ac 1 -f wav {wav_path}")
 
     r = sr.Recognizer()
@@ -220,10 +219,7 @@ def guardar_audio():
 
     if modo == "texto":
         doc = Document()
-        p = doc.add_paragraph(texto)
-        run = p.runs[0]
-        run.font.name = "Courier New"
-
+        doc.add_paragraph(texto)
         save_word_to_drive(user_id, doc)
         return f"Texto guardado en documento: {texto}"
 
@@ -248,30 +244,166 @@ def guardar_audio():
         descripcion = texto.replace(match.group(1), "").strip() if match else texto
         ws.append([descripcion, monto])
 
-        total = sum(
-            cell.value for cell in ws["B"][1:] if isinstance(cell.value, (int, float))
-        )
+        total = sum(cell.value for cell in ws["B"][1:] if isinstance(cell.value, (int, float)))
         ws["A1"] = "TOTAL"
         ws["B1"] = total
 
         save_excel_to_drive(user_id, wb)
         return f"Gasto registrado: {descripcion} (monto: {monto})"
 
-@app.route('/test_drive')
-def test_drive():
+# --- Ver documentos online ---
+@app.route('/ver_word')
+def ver_word():
     user_id = get_user_id()
-    content = b"Hola Micaela, esto es una prueba."
-    try:
-        file_id = upload_to_drive(user_id, content, "prueba.txt", "text/plain")
-        if isinstance(file_id, str):
-            return f"Archivo subido a Drive con ID: {file_id}"
-        else:
-            return file_id  # redirect a Google si falta autorización
-    except Exception as e:
-        return f"Error al subir a Drive: {e}"
+    creds = get_credentials()
+    if not isinstance(creds, Credentials):
+        return creds
+    drive_service = build_drive_service(creds)
 
+    filename = f"{user_id}_transcripciones.docx"
+    query = f"name='{filename}'"
+    if FOLDER_ID:
+        query += f" and '{FOLDER_ID}' in parents"
+
+    results = drive_service.files().list(q=query, fields="files(id)").execute()
+    items = results.get("files", [])
+    if not items:
+        return render_template("ver_word.html", contenido=[])
+
+    file_id = items[0]["id"]
+    request = drive_service.files().get_media(fileId=file_id)
+    buffer = BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
+    done = False
+    while not done:
+        status, done = downloader.next_chunk()
+    buffer.seek(0)
+
+    doc = Document(buffer)
+    contenido = [p.text for p in doc.paragraphs]
+    return render_template("ver_word.html", contenido=contenido)
+
+@app.route('/ver_excel')
+def ver_excel():
+    user_id = get_user_id()
+    creds = get_credentials()
+    if not isinstance(creds, Credentials):
+        return creds
+    drive_service = build_drive_service(creds)
+
+    filename = f"{user_id}_gastos.xlsx"
+    query = f"name='{filename}'"
+    if FOLDER_ID:
+        query += f" and '{FOLDER_ID}' in parents"
+
+    results = drive_service.files().list(q=query, fields="files(id)").execute()
+    items = results.get("files", [])
+    if not items:
+        return render_template("ver_excel.html", filas=[])
+
+    file_id = items[0]["id"]
+    request = drive_service.files().get_media(fileId=file_id)
+    buffer = BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
+    done = False
+    while not done:
+        status, done = downloader.next_chunk()
+    buffer.seek(0)
+
+    wb = openpyxl.load_workbook(buffer)
+    ws = wb.active
+    filas = [row for row in ws.iter_rows(values_only=True)]
+    return render_template("ver_excel.html", filas=filas)
+
+# --- Descargar documentos ---
+@app.route('/descargar_doc')
+def descargar_doc():
+    user_id = get_user_id()
+    creds = get_credentials()
+    if not isinstance(creds, Credentials):
+        return creds
+    drive_service = build_drive_service(creds)
+
+    filename = f"{user_id}_transcripciones.docx"
+    query = f"name='{filename}'"
+    if FOLDER_ID:
+        query += f" and '{FOLDER_ID}' in parents"
+
+    results = drive_service.files().list(q=query, fields="files(id)").execute()
+    items = results.get("files", [])
+    if not items:
+        return "No hay documento aún."
+
+    file_id = items[0]["id"]
+    request = drive_service.files().get_media(fileId=file_id)
+    buffer = BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
+    done = False
+    while not done:
+        status, done = downloader.next_chunk()
+    buffer.seek(0)
+
+    return send_file(buffer, as_attachment=True, download_name="transcripciones.docx")
+
+@app.route('/descargar_excel')
+def descargar_excel():
+    user_id = get_user_id()
+    creds = get_credentials()
+    if not isinstance(creds, Credentials):
+        return creds
+    drive_service = build_drive_service(creds)
+
+    filename = f"{user_id}_gastos.xlsx"
+    query = f"name='{filename}'"
+    if FOLDER_ID:
+        query += f" and '{FOLDER_ID}' in parents"
+
+    results = drive_service.files().list(q=query, fields="files(id)").execute()
+    items = results.get("files", [])
+    if not items:
+        return "No hay Excel aún."
+
+    file_id = items[0]["id"]
+    request = drive_service.files().get_media(fileId=file_id)
+    buffer = BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
+    done = False
+    while not done:
+        status, done = downloader.next_chunk()
+    buffer.seek(0)
+
+    return send_file(buffer, as_attachment=True, download_name="gastos.xlsx")
+
+# --- Resetear documentos del usuario ---
+@app.route('/reset_documento', methods=['POST'])
+def reset_documento():
+    user_id = get_user_id()
+    creds = get_credentials()
+    if not isinstance(creds, Credentials):
+        return creds
+    drive_service = build_drive_service(creds)
+
+    filenames = [f"{user_id}_transcripciones.docx", f"{user_id}_gastos.xlsx"]
+    borrados = []
+
+    for filename in filenames:
+        query = f"name='{filename}'"
+        if FOLDER_ID:
+            query += f" and '{FOLDER_ID}' in parents"
+        results = drive_service.files().list(q=query, fields="files(id)").execute()
+        items = results.get("files", [])
+        for item in items:
+            drive_service.files().delete(fileId=item["id"]).execute()
+            borrados.append(filename)
+
+    if borrados:
+        return f"Documentos reiniciados: {', '.join(set(borrados))}"
+    else:
+        return "No había documentos para reiniciar."
+
+# --- Arranque ---
 if __name__ == "__main__":
-    # Para pruebas locales con HTTP, recordar:
+    # Para pruebas locales con HTTP:
     # export OAUTHLIB_INSECURE_TRANSPORT=1
     app.run(debug=True, host="0.0.0.0", port=5000)
 
