@@ -226,48 +226,43 @@ def save_excel_to_drive(user_id, new_wb):
         existing_wb = openpyxl.load_workbook(existing_buffer)
         ws = existing_wb.active
 
-        # 1) Eliminar TODAS las filas TOTAL previas (si las hubiera)
-        #    Recorremos de abajo hacia arriba para poder borrar sin desalinear índices
+        # 1) Eliminar filas TOTAL previas
         for row_idx in range(ws.max_row, 1, -1):
             val = ws.cell(row=row_idx, column=1).value
             if isinstance(val, str) and val.strip().upper() == "TOTAL":
                 ws.delete_rows(row_idx, 1)
 
-        # 2) Asegurar encabezados en la primera fila
+        # 2) Asegurar encabezados
         header_a1 = ws.cell(row=1, column=1).value
         header_b1 = ws.cell(row=1, column=2).value
-        if not (isinstance(header_a1, str) and "descrip" in header_a1.lower()) or not (isinstance(header_b1, str) and "monto" in header_b1.lower()):
+        has_desc = isinstance(header_a1, str) and "descrip" in header_a1.lower()
+        has_monto = isinstance(header_b1, str) and "monto" in header_b1.lower()
+        if not (has_desc and has_monto):
             ws.delete_rows(1, 1)
             ws.insert_rows(1)
             ws.cell(row=1, column=1, value="Descripción")
             ws.cell(row=1, column=2, value="Monto")
 
-           # 3) Agregar filas nuevas (sin encabezados)
-    for i, row in enumerate(new_wb.active.iter_rows(values_only=True)):
-        if i == 0 and row and len(row) >= 2:
-            header_like = (
-                isinstance(row[0], str) and "descrip" in row[0].lower()
-                or isinstance(row[1], str) and "monto" in row[1].lower()
-            )
-            if header_like:
-                continue
-        ws.append(row)
+        # 3) Agregar filas nuevas (sin encabezados)
+        for i, row in enumerate(new_wb.active.iter_rows(values_only=True)):
+            if i == 0 and row and len(row) >= 2:
+                header_like = (
+                    isinstance(row[0], str) and "descrip" in row[0].lower()
+                    or isinstance(row[1], str) and "monto" in row[1].lower()
+                )
+                if header_like:
+                    continue
+            ws.append(row)
 
-    # 4) Calcular el total ignorando encabezados
-    total = 0.0
-    for row_idx in range(2, ws.max_row + 1):
-        val = ws.cell(row=row_idx, column=2).value
-        if isinstance(val, (int, float)):
-            total += float(val)
+        # 4) Calcular el total ignorando encabezados
+        total = 0.0
+        for row_idx in range(2, ws.max_row + 1):
+            val = ws.cell(row=row_idx, column=2).value
+            if isinstance(val, (int, float)):
+                total += float(val)
 
-    # 5) Eliminar filas TOTAL previas (si las hubiera)
-    for row_idx in range(ws.max_row, 1, -1):
-        val = ws.cell(row=row_idx, column=1).value
-        if isinstance(val, str) and val.strip().upper() == "TOTAL":
-            ws.delete_rows(row_idx, 1)
-
-    # 6) Agregar ÚNICA fila TOTAL al final
-    ws.append(["TOTAL", total])
+        # 5) Agregar ÚNICA fila TOTAL al final
+        ws.append(["TOTAL", total])
 
         # Subir actualización
         buffer = BytesIO()
@@ -282,17 +277,15 @@ def save_excel_to_drive(user_id, new_wb):
         return file_id
 
     else:
-        # Crear nuevo Excel con encabezados, datos y TOTAL
+        # Crear nuevo Excel con encabezados y TOTAL
         base_wb = openpyxl.Workbook()
         base_ws = base_wb.active
         base_ws.title = "Gastos"
         base_ws.append(["Descripción", "Monto"])
 
-        # Volcar las filas del temporal (solo datos)
         for row in new_wb.active.iter_rows(values_only=True):
             base_ws.append(row)
 
-        # Calcular total
         total = 0.0
         for row_idx in range(2, base_ws.max_row + 1):
             val = base_ws.cell(row=row_idx, column=2).value
@@ -317,6 +310,7 @@ def save_excel_to_drive(user_id, new_wb):
             fields="id"
         ).execute()
         return created.get("id")
+
 
 
 # -------------------------------
