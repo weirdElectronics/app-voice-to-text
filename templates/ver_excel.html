@@ -7,14 +7,14 @@
   <style>
     body { font-size: 22px; }
     h1 { font-size: 32px; }
-    table { font-size: 22px; width: 100%; }
-    td, th { padding: 12px; }
+    table { font-size: 22px; width: 100%; border-collapse: collapse; }
+    td, th { padding: 12px; border: 1px solid #333; }
   </style>
 </head>
 <body>
   <h1>Mis gastos</h1>
-  {% if filas|length > 1 %}
-    <table border="1">
+  {% if filas and filas|length > 1 %}
+    <table>
       {% for fila in filas %}
         <tr>
           {% for celda in fila %}
@@ -26,6 +26,7 @@
   {% else %}
     <p>No hay gastos registrados todavía.</p>
   {% endif %}
+  <br>
   <a href="/">Volver</a>
 </body>
 </html>
