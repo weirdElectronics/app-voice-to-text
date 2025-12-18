@@ -30,10 +30,12 @@ def parse_amount_es(texto: str):
     """
     Devuelve (monto_float, descripcion_sin_montos).
     Soporta:
-      - "500.850" (miles con punto) => 500850.0
-      - "1.200,50" (miles con punto, decimales con coma) => 1200.50
-      - "400 mil 500" => 400500.0
-      - "400 mil" => 400000.0
+      - "500.850" -> 500850.0
+      - "1.200,50" -> 1200.50
+      - "2.000.000" -> 2000000.0
+      - "2000.000" (ASR raro) -> 2000000.0
+      - "400 mil 500" -> 400500.0
+      - "400 mil" -> 400000.0
     """
     t = texto.lower()
 
@@ -48,7 +50,7 @@ def parse_amount_es(texto: str):
         desc = re.sub(r'\s+', ' ', desc).strip()
         return float(monto), desc
 
-    # Número con separadores (miles y/o decimales)
+    # Número con separadores
     m_num = re.search(r'\d+(?:[.,]\d+)*', t)
     if m_num:
         raw = m_num.group(0)
@@ -59,9 +61,10 @@ def parse_amount_es(texto: str):
             s = s.replace('.', '').replace(',', '.')
         elif '.' in s:
             parts = s.split('.')
-            # Si la última parte tiene 3 dígitos y hay varias partes: tratar "." como miles
-            if len(parts) > 1 and len(parts[-1]) == 3:
-                s = ''.join(parts)  # 500.850 -> 500850
+            # Si hay más de un punto, o la última parte tiene 3 dígitos -> tratar puntos como miles
+            if s.count('.') > 1 or (len(parts) > 1 and len(parts[-1]) == 3):
+                s = ''.join(parts)  # 500.850 -> 500850, 2000.000 -> 2000000
+            # Si solo hay un punto y no es miles -> puede ser decimal (ej: 400.5)
         elif ',' in s:
             # Solo coma -> decimal
             s = s.replace(',', '.')
@@ -71,12 +74,13 @@ def parse_amount_es(texto: str):
         except:
             monto = 0.0
 
-        # "400 mil" sin el caso compuesto explícito
+        # "X mil" sin compuesto explícito (ej: "400 mil")
         if 'mil' in t and s.isdigit():
             monto *= 1000
 
         # Quitar el número y palabras de moneda de la descripción
-        desc = t.replace(raw, '')
+        # Usamos re.escape(raw) para borrar exactamente ese match
+        desc = re.sub(re.escape(raw), '', t)
         desc = re.sub(r'\bmil\b', '', desc)
         desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', desc)
         desc = re.sub(r'\s+', ' ', desc).strip()
@@ -87,6 +91,7 @@ def parse_amount_es(texto: str):
     desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', t)
     desc = re.sub(r'\s+', ' ', desc).strip()
     return 0.0, desc
+
 
 # -------------------------------
 # OAuth y Drive helpers
@@ -223,9 +228,24 @@ def save_excel_to_drive(user_id, new_wb):
         existing_wb = openpyxl.load_workbook(existing_buffer)
         ws = existing_wb.active
 
-        # Agregar filas nuevas (sin encabezados)
+        # 1) Eliminar TODAS las filas TOTAL previas (si las hubiera)
+        #    Recorremos de abajo hacia arriba para poder borrar sin desalinear índices
+        for row_idx in range(ws.max_row, 1, -1):
+            val = ws.cell(row=row_idx, column=1).value
+            if isinstance(val, str) and val.strip().upper() == "TOTAL":
+                ws.delete_rows(row_idx, 1)
+
+        # 2) Asegurar encabezados en la primera fila
+        header_a1 = ws.cell(row=1, column=1).value
+        header_b1 = ws.cell(row=1, column=2).value
+        if not (isinstance(header_a1, str) and "descrip" in header_a1.lower()) or not (isinstance(header_b1, str) and "monto" in header_b1.lower()):
+            ws.delete_rows(1, 1)
+            ws.insert_rows(1)
+            ws.cell(row=1, column=1, value="Descripción")
+            ws.cell(row=1, column=2, value="Monto")
+
+        # 3) Agregar filas nuevas (sin encabezados)
         for i, row in enumerate(new_wb.active.iter_rows(values_only=True)):
-            # si detecta posible encabezado en la primera fila, lo salta
             if i == 0 and row and len(row) >= 2:
                 header_like = (
                     isinstance(row[0], str) and "descrip" in row[0].lower()
@@ -235,29 +255,15 @@ def save_excel_to_drive(user_id, new_wb):
                     continue
             ws.append(row)
 
-        # Recalcular TOTAL ignorando encabezados y cualquier fila TOTAL previa
-        filas = list(ws.iter_rows(values_only=True))
-        montos = []
-        for fila in filas:
-            if not fila:
-                continue
-            # Encabezado
-            if isinstance(fila[0], str) and "descrip" in fila[0].lower():
-                continue
-            # Fila TOTAL existente
-            if isinstance(fila[0], str) and fila[0].strip().upper() == "TOTAL":
-                continue
-            # Sumar montos válidos
-            if len(fila) > 1 and isinstance(fila[1], (int, float)):
-                montos.append(fila[1])
+        # 4) Calcular el total ignorando encabezados
+        total = 0.0
+        for row_idx in range(2, ws.max_row + 1):
+            val = ws.cell(row=row_idx, column=2).value
+            if isinstance(val, (int, float)):
+                total += float(val)
 
-        total = sum(montos)
-
-        # Actualizar o crear la fila TOTAL al final
-        if filas and isinstance(filas[-1][0], str) and filas[-1][0].strip().upper() == "TOTAL":
-            ws.cell(row=len(filas), column=2, value=total)
-        else:
-            ws.append(["TOTAL", total])
+        # 5) Agregar ÚNICA fila TOTAL al final
+        ws.append(["TOTAL", total])
 
         # Subir actualización
         buffer = BytesIO()
@@ -272,18 +278,23 @@ def save_excel_to_drive(user_id, new_wb):
         return file_id
 
     else:
-        # Crear nuevo Excel con encabezados y TOTAL único
+        # Crear nuevo Excel con encabezados, datos y TOTAL
         base_wb = openpyxl.Workbook()
         base_ws = base_wb.active
         base_ws.title = "Gastos"
         base_ws.append(["Descripción", "Monto"])
 
+        # Volcar las filas del temporal (solo datos)
         for row in new_wb.active.iter_rows(values_only=True):
             base_ws.append(row)
 
-        filas = list(base_ws.iter_rows(values_only=True))
-        montos = [fila[1] for fila in filas[1:] if len(fila) > 1 and isinstance(fila[1], (int, float))]
-        total = sum(montos)
+        # Calcular total
+        total = 0.0
+        for row_idx in range(2, base_ws.max_row + 1):
+            val = base_ws.cell(row=row_idx, column=2).value
+            if isinstance(val, (int, float)):
+                total += float(val)
+
         base_ws.append(["TOTAL", total])
 
         buffer = BytesIO()
@@ -302,6 +313,7 @@ def save_excel_to_drive(user_id, new_wb):
             fields="id"
         ).execute()
         return created.get("id")
+
 
 # -------------------------------
 # Rutas base
@@ -353,6 +365,7 @@ def guardar_audio():
 
         save_excel_to_drive(user_id, wb)
         return f"Gasto registrado: {descripcion} (monto: {monto})"
+
 
 # -------------------------------
 # Ver online
