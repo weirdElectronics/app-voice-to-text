@@ -27,16 +27,6 @@ FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
 # Parseo de montos en español
 # -------------------------------
 def parse_amount_es(texto: str):
-    """
-    Devuelve (monto_float, descripcion_sin_montos).
-    Soporta:
-      - "500.850" -> 500850.0
-      - "1.200,50" -> 1200.50
-      - "2.000.000" -> 2000000.0
-      - "2000.000" (ASR raro) -> 2000000.0
-      - "400 mil 500" -> 400500.0
-      - "400 mil" -> 400000.0
-    """
     t = texto.lower()
 
     # Caso "X mil Y" o "X mil"
@@ -49,6 +39,38 @@ def parse_amount_es(texto: str):
         desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', desc)
         desc = re.sub(r'\s+', ' ', desc).strip()
         return float(monto), desc
+
+    # Caso número con separadores
+    m_num = re.search(r'\d+(?:[.,]\d+)*', t)
+    if m_num:
+        raw = m_num.group(0)
+        s = raw.replace(' ', '')
+
+        if ',' in s and '.' in s:
+            s = s.replace('.', '').replace(',', '.')
+        elif '.' in s:
+            parts = s.split('.')
+            if s.count('.') > 1 or (len(parts) > 1 and len(parts[-1]) == 3):
+                s = ''.join(parts)  # 500.850 -> 500850, 2000.000 -> 2000000
+        elif ',' in s:
+            s = s.replace(',', '.')
+
+        try:
+            monto = float(s)
+        except:
+            monto = 0.0
+
+        desc = re.sub(re.escape(raw), '', t)
+        desc = re.sub(r'\bmil\b', '', desc)
+        desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', desc)
+        desc = re.sub(r'\s+', ' ', desc).strip()
+
+        return monto, desc
+
+    desc = re.sub(r'\b(pesos?|ars|argentinos?)\b', '', t)
+    desc = re.sub(r'\s+', ' ', desc).strip()
+    return 0.0, desc
+
 
     # Número con separadores
     m_num = re.search(r'\d+(?:[.,]\d+)*', t)
