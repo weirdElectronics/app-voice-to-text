@@ -244,26 +244,32 @@ def save_excel_to_drive(user_id, new_wb):
             ws.cell(row=1, column=1, value="Descripción")
             ws.cell(row=1, column=2, value="Monto")
 
-        # 3) Agregar filas nuevas (sin encabezados)
-        for i, row in enumerate(new_wb.active.iter_rows(values_only=True)):
-            if i == 0 and row and len(row) >= 2:
-                header_like = (
-                    isinstance(row[0], str) and "descrip" in row[0].lower()
-                    or isinstance(row[1], str) and "monto" in row[1].lower()
-                )
-                if header_like:
-                    continue
-            ws.append(row)
+           # 3) Agregar filas nuevas (sin encabezados)
+    for i, row in enumerate(new_wb.active.iter_rows(values_only=True)):
+        if i == 0 and row and len(row) >= 2:
+            header_like = (
+                isinstance(row[0], str) and "descrip" in row[0].lower()
+                or isinstance(row[1], str) and "monto" in row[1].lower()
+            )
+            if header_like:
+                continue
+        ws.append(row)
 
-        # 4) Calcular el total ignorando encabezados
-        total = 0.0
-        for row_idx in range(2, ws.max_row + 1):
-            val = ws.cell(row=row_idx, column=2).value
-            if isinstance(val, (int, float)):
-                total += float(val)
+    # 4) Calcular el total ignorando encabezados
+    total = 0.0
+    for row_idx in range(2, ws.max_row + 1):
+        val = ws.cell(row=row_idx, column=2).value
+        if isinstance(val, (int, float)):
+            total += float(val)
 
-        # 5) Agregar ÚNICA fila TOTAL al final
-        ws.append(["TOTAL", total])
+    # 5) Eliminar filas TOTAL previas (si las hubiera)
+    for row_idx in range(ws.max_row, 1, -1):
+        val = ws.cell(row=row_idx, column=1).value
+        if isinstance(val, str) and val.strip().upper() == "TOTAL":
+            ws.delete_rows(row_idx, 1)
+
+    # 6) Agregar ÚNICA fila TOTAL al final
+    ws.append(["TOTAL", total])
 
         # Subir actualización
         buffer = BytesIO()
