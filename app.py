@@ -181,9 +181,11 @@ def test_drive():
     content = b"Hola Micaela, esto es una prueba."
     try:
         file_id = upload_to_drive(user_id, content, "prueba.txt", "text/plain")
-        return f"Archivo subido a Drive con ID: {file_id}"
-    except Exception as e:
-        return f"Error al subir a Drive: {e}"
+if isinstance(file_id, str):
+    return f"Archivo subido a Drive con ID: {file_id}"
+else:
+    return file_id  # esto devuelve el redirect a Google
+
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
